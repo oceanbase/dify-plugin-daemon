@@ -1,8 +1,10 @@
-package cache
+package redis
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache"
 )
 
 type TestAutoTypeStruct struct {
@@ -13,14 +15,14 @@ func TestAutoType(t *testing.T) {
 	if err := InitRedisClient("127.0.0.1:6379", "", "difyai123456", false, 0); err != nil {
 		t.Fatal(err)
 	}
-	defer Close()
+	defer cache.Close()
 
-	err := AutoSet("test", TestAutoTypeStruct{ID: "123"})
+	err := cache.AutoSet("test", TestAutoTypeStruct{ID: "123"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := AutoGet[TestAutoTypeStruct]("test")
+	result, err := cache.AutoGet[TestAutoTypeStruct]("test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +31,7 @@ func TestAutoType(t *testing.T) {
 		t.Fatal("result not correct")
 	}
 
-	if _, err := AutoDelete[TestAutoTypeStruct]("test"); err != nil {
+	if _, err := cache.AutoDelete[TestAutoTypeStruct]("test"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -38,9 +40,9 @@ func TestAutoTypeWithGetter(t *testing.T) {
 	if err := InitRedisClient("127.0.0.1:6379", "", "difyai123456", false, 0); err != nil {
 		t.Fatal(err)
 	}
-	defer Close()
+	defer cache.Close()
 
-	result, err := AutoGetWithGetter("test1", func() (*TestAutoTypeStruct, error) {
+	result, err := cache.AutoGetWithGetter("test1", func() (*TestAutoTypeStruct, error) {
 		return &TestAutoTypeStruct{
 			ID: "123",
 		}, nil
@@ -48,13 +50,13 @@ func TestAutoTypeWithGetter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = AutoGetWithGetter("test1", func() (*TestAutoTypeStruct, error) {
+	result, err = cache.AutoGetWithGetter("test1", func() (*TestAutoTypeStruct, error) {
 		return nil, errors.New("must hit cache")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AutoDelete[TestAutoTypeStruct]("test1"); err != nil {
+	if _, err := cache.AutoDelete[TestAutoTypeStruct]("test1"); err != nil {
 		t.Fatal(err)
 	}
 
