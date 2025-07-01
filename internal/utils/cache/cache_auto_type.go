@@ -1,17 +1,14 @@
 package cache
 
 import (
-	"errors"
 	"reflect"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 // Set the value with key
-func AutoSet[T any](key string, value T, context ...redis.Cmdable) error {
+func AutoSet[T any](key string, value T, context ...Context) error {
 	if client == nil {
-		return ErrDBNotInit
+		return ErrNotInit
 	}
 
 	fullTypeInfo := reflect.TypeOf(value)
@@ -24,16 +21,16 @@ func AutoSet[T any](key string, value T, context ...redis.Cmdable) error {
 }
 
 // Get the value with key
-func AutoGet[T any](key string, context ...redis.Cmdable) (*T, error) {
+func AutoGet[T any](key string, context ...Context) (*T, error) {
 	return AutoGetWithGetter(key, func() (*T, error) {
-		return nil, errors.New("not found")
+		return nil, ErrNotFound
 	}, context...)
 }
 
 // Get the value with key, fallback to getter if not found, and set the value to cache
-func AutoGetWithGetter[T any](key string, getter func() (*T, error), context ...redis.Cmdable) (*T, error) {
+func AutoGetWithGetter[T any](key string, getter func() (*T, error), context ...Context) (*T, error) {
 	if client == nil {
-		return nil, ErrDBNotInit
+		return nil, ErrNotInit
 	}
 
 	var result_tmpl T
@@ -65,9 +62,9 @@ func AutoGetWithGetter[T any](key string, getter func() (*T, error), context ...
 }
 
 // Delete the value with key
-func AutoDelete[T any](key string, context ...redis.Cmdable) (int64, error) {
+func AutoDelete[T any](key string, context ...Context) (int64, error) {
 	if client == nil {
-		return 0, ErrDBNotInit
+		return 0, ErrNotInit
 	}
 
 	var result_tmpl T
