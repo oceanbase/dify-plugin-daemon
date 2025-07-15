@@ -2,7 +2,7 @@
 
 ## Overview
 
-Dify Plugin Daemon is a service that manages the lifecycle of plugins. It's responsible for 3 types of runtimes:
+Dify Plugin Daemon is a service that manages the lifecycle of plugins. It's responsible for 3 types of runtimes,currently it is compatible for mysql and redis can be replaced with mysql cache:
 
 1. Local runtime: runs on the same machine as the Dify server.
 2. Debug runtime: listens to a port to wait for a debugging plugin to connect.
