@@ -67,15 +67,15 @@ func (c Client) Set(key string, value any, expire time.Duration) error {
 	val := toBytes(value)
 	expireTime := time.Now().Add(expire)
 
-	result := c.DB.Model(&CacheKV{}).
-		Where("cache_key = ?", key).
-		Assign(CacheKV{
-			CacheKey:   key,
-			CacheValue: val,
-			ExpireTime: expireTime,
-		}).
-		FirstOrCreate(&CacheKV{})
-	return result.Error
+	// 使用 INSERT ... ON DUPLICATE KEY UPDATE 来避免并发写入问题
+	sql := `INSERT INTO cache_kvs (cache_key, cache_value, expire_time, created_at, updated_at) 
+			VALUES (?, ?, ?, NOW(), NOW()) 
+			ON DUPLICATE KEY UPDATE 
+			cache_value = VALUES(cache_value), 
+			expire_time = VALUES(expire_time), 
+			updated_at = NOW()`
+
+	return c.DB.Exec(sql, key, val, expireTime).Error
 }
 
 func (c Client) GetBytes(key string) ([]byte, error) {
@@ -117,15 +117,14 @@ func (c Client) Count(key ...string) (int64, error) {
 }
 
 func (c Client) SetMapField(key string, field string, value string) error {
-	result := c.DB.Model(&CacheMap{}).
-		Where("cache_key = ? AND cache_field = ?", key, field).
-		Assign(CacheMap{
-			CacheKey:   key,
-			CacheField: field,
-			CacheValue: value,
-		}).
-		FirstOrCreate(&CacheMap{})
-	return result.Error
+	// 使用 INSERT ... ON DUPLICATE KEY UPDATE 来避免并发写入问题
+	sql := `INSERT INTO cache_maps (cache_key, cache_field, cache_value, created_at, updated_at) 
+			VALUES (?, ?, ?, NOW(), NOW()) 
+			ON DUPLICATE KEY UPDATE 
+			cache_value = VALUES(cache_value), 
+			updated_at = NOW()`
+
+	return c.DB.Exec(sql, key, field, value).Error
 }
 
 func (c Client) GetMapField(key string, field string) (string, error) {
@@ -198,24 +197,17 @@ func (c Client) SetNX(key string, value any, expire time.Duration) (bool, error)
 	val := toBytes(value)
 	expireTime := time.Now().Add(expire)
 
-	var existing CacheKV
-	result := c.DB.Where("cache_key = ?", key).First(&existing)
-	if result.Error == nil {
-		return false, nil
-	}
+	// 使用 INSERT IGNORE 来实现 SetNX，避免并发写入问题
+	sql := `INSERT IGNORE INTO cache_kvs (cache_key, cache_value, expire_time, created_at, updated_at) 
+			VALUES (?, ?, ?, NOW(), NOW())`
 
-	if result.Error.Error() != "record not found" {
+	result := c.DB.Exec(sql, key, val, expireTime)
+	if result.Error != nil {
 		return false, result.Error
 	}
 
-	newCache := CacheKV{
-		CacheKey:   key,
-		CacheValue: val,
-		ExpireTime: expireTime,
-	}
-
-	result = c.DB.Create(&newCache)
-	return result.Error == nil, result.Error
+	// 如果影响的行数为1，说明插入成功；如果为0，说明记录已存在
+	return result.RowsAffected == 1, nil
 }
 
 func (c Client) Expire(key string, expire time.Duration) (bool, error) {
