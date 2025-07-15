@@ -46,7 +46,8 @@ jobs:
 
   build:
     needs: matrix_prepare
-    runs-on: ${{ matrix.platform == 'linux/arm64' && 'arm64_runner' || 'ubuntu-latest' }}
+    #runs-on: ${{ matrix.platform == 'linux/arm64' && 'arm64_runner' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       matrix: ${{ fromJson(needs.matrix_prepare.outputs.matrix) }}
 
