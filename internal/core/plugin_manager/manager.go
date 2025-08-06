@@ -14,8 +14,9 @@ import (
 	"github.com/langgenius/dify-plugin-daemon/internal/oss"
 	"github.com/langgenius/dify-plugin-daemon/internal/types/app"
 	"github.com/langgenius/dify-plugin-daemon/internal/types/models"
-	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache"
 	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache/helper"
+	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache/mysql"
+	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache/redis"
 	"github.com/langgenius/dify-plugin-daemon/internal/utils/lock"
 	"github.com/langgenius/dify-plugin-daemon/internal/utils/log"
 	"github.com/langgenius/dify-plugin-daemon/internal/utils/mapping"
@@ -174,15 +175,28 @@ func (p *PluginManager) GetAsset(id string) ([]byte, error) {
 func (p *PluginManager) Launch(configuration *app.Config) {
 	log.Info("start plugin manager daemon...")
 
-	// init redis client
-	if err := cache.InitRedisClient(
-		fmt.Sprintf("%s:%d", configuration.RedisHost, configuration.RedisPort),
-		configuration.RedisUser,
-		configuration.RedisPass,
-		configuration.RedisUseSsl,
-		configuration.RedisDB,
-	); err != nil {
-		log.Panic("init redis client failed: %s", err.Error())
+	if configuration.DBType == "mysql" && configuration.CacheScheme == "mysql" {
+		err := db.DifyPluginDB.AutoMigrate(
+			mysql.CacheKV{},
+			mysql.CacheMap{},
+			mysql.Message{},
+			mysql.MessageSubscribe{},
+		)
+		if err != nil {
+			log.Panic("init mysql cache tables failed: %s", err.Error())
+		}
+		mysql.InitMysqlClient()
+	} else {
+		// init redis client
+		if err := redis.InitRedisClient(
+			fmt.Sprintf("%s:%d", configuration.RedisHost, configuration.RedisPort),
+			configuration.RedisUser,
+			configuration.RedisPass,
+			configuration.RedisUseSsl,
+			configuration.RedisDB,
+		); err != nil {
+			log.Panic("init redis client failed: %s", err.Error())
+		}
 	}
 
 	invocation, err := real.NewDifyInvocationDaemon(

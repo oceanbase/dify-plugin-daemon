@@ -1,4 +1,4 @@
-package cache
+package redis
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/langgenius/dify-plugin-daemon/internal/utils/cache"
 )
 
 const (
@@ -26,7 +26,7 @@ func TestRedisConnection(t *testing.T) {
 	}
 
 	// close
-	if err := Close(); err != nil {
+	if err := cache.Close(); err != nil {
 		t.Errorf("close redis client failed: %v", err)
 		return
 	}
@@ -38,12 +38,12 @@ func TestRedisTransaction(t *testing.T) {
 		t.Errorf("get redis connection failed: %v", err)
 		return
 	}
-	defer Close()
+	defer cache.Close()
 
 	// test transaction
-	err := Transaction(func(p redis.Pipeliner) error {
+	err := cache.Transaction(func(p cache.Context) error {
 		// set key
-		if err := Store(
+		if err := cache.Store(
 			strings.Join([]string{TEST_PREFIX, "key"}, ":"),
 			"value",
 			time.Second,
@@ -62,11 +62,11 @@ func TestRedisTransaction(t *testing.T) {
 	}
 
 	// get key
-	value, err := GetString(
+	value, err := cache.GetString(
 		strings.Join([]string{TEST_PREFIX, "key"}, ":"),
 	)
 
-	if err != ErrNotFound {
+	if err != cache.ErrNotFound {
 		t.Errorf("key should not exist")
 		return
 	}
@@ -77,9 +77,9 @@ func TestRedisTransaction(t *testing.T) {
 	}
 
 	// test success transaction
-	err = Transaction(func(p redis.Pipeliner) error {
+	err = cache.Transaction(func(p cache.Context) error {
 		// set key
-		if err := Store(
+		if err := cache.Store(
 			strings.Join([]string{TEST_PREFIX, "key"}, ":"),
 			"value",
 			time.Second,
@@ -97,10 +97,10 @@ func TestRedisTransaction(t *testing.T) {
 		return
 	}
 
-	defer Del(strings.Join([]string{TEST_PREFIX, "key"}, ":"))
+	defer cache.Del(strings.Join([]string{TEST_PREFIX, "key"}, ":"))
 
 	// get key
-	value, err = GetString(
+	value, err = cache.GetString(
 		strings.Join([]string{TEST_PREFIX, "key"}, ":"),
 	)
 
@@ -121,35 +121,35 @@ func TestRedisScanMap(t *testing.T) {
 		t.Errorf("get redis connection failed: %v", err)
 		return
 	}
-	defer Close()
+	defer cache.Close()
 
 	type s struct {
 		Field string `json:"field"`
 	}
 
-	err := SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key1", s{Field: "value1"})
+	err := cache.SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key1", s{Field: "value1"})
 	if err != nil {
 		t.Errorf("set map failed: %v", err)
 		return
 	}
-	defer Del(strings.Join([]string{TEST_PREFIX, "map"}, ":"))
-	err = SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key2", s{Field: "value2"})
+	defer cache.Del(strings.Join([]string{TEST_PREFIX, "map"}, ":"))
+	err = cache.SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key2", s{Field: "value2"})
 	if err != nil {
 		t.Errorf("set map failed: %v", err)
 		return
 	}
-	err = SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key3", s{Field: "value3"})
+	err = cache.SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key3", s{Field: "value3"})
 	if err != nil {
 		t.Errorf("set map failed: %v", err)
 		return
 	}
-	err = SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "4", s{Field: "value4"})
+	err = cache.SetMapOneField(strings.Join([]string{TEST_PREFIX, "map"}, ":"), "4", s{Field: "value4"})
 	if err != nil {
 		t.Errorf("set map failed: %v", err)
 		return
 	}
 
-	data, err := ScanMap[s](strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key*")
+	data, err := cache.ScanMap[s](strings.Join([]string{TEST_PREFIX, "map"}, ":"), "key*")
 	if err != nil {
 		t.Errorf("scan map failed: %v", err)
 		return
@@ -175,7 +175,7 @@ func TestRedisScanMap(t *testing.T) {
 		return
 	}
 
-	err = ScanMapAsync[s](strings.Join([]string{TEST_PREFIX, "map"}, ":"), "4", func(m map[string]s) error {
+	err = cache.ScanMapAsync[s](strings.Join([]string{TEST_PREFIX, "map"}, ":"), "4", func(m map[string]s) error {
 		if len(m) != 1 {
 			t.Errorf("scan map async should return 1")
 			return errors.New("scan map async should return 1")
@@ -201,13 +201,13 @@ func TestRedisP2PPubsub(t *testing.T) {
 		t.Errorf("get redis connection failed: %v", err)
 		return
 	}
-	defer Close()
+	defer cache.Close()
 
 	ch := "test-channel"
 
 	type s struct{}
 
-	sub, cancel := Subscribe[s](ch)
+	sub, cancel := cache.Subscribe[s](ch)
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -219,7 +219,7 @@ func TestRedisP2PPubsub(t *testing.T) {
 	}()
 
 	// test pubsub
-	err := Publish(ch, s{})
+	err := cache.Publish(ch, s{})
 	if err != nil {
 		t.Errorf("publish failed: %v", err)
 		return
@@ -234,7 +234,7 @@ func TestRedisP2ARedis(t *testing.T) {
 		t.Errorf("get redis connection failed: %v", err)
 		return
 	}
-	defer Close()
+	defer cache.Close()
 
 	ch := "test-channel-p2a"
 
@@ -248,7 +248,7 @@ func TestRedisP2ARedis(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		go func() {
-			sub, cancel := Subscribe[s](ch)
+			sub, cancel := cache.Subscribe[s](ch)
 			swg.Done()
 			defer cancel()
 			<-sub
@@ -259,7 +259,7 @@ func TestRedisP2ARedis(t *testing.T) {
 	swg.Wait()
 
 	// test pubsub
-	err := Publish(ch, s{})
+	err := cache.Publish(ch, s{})
 	if err != nil {
 		t.Errorf("publish failed: %v", err)
 		return
@@ -286,30 +286,30 @@ func TestSetAndGet(t *testing.T) {
 	if err := InitRedisClient("127.0.0.1:6379", "", "difyai123456", false, 0); err != nil {
 		t.Fatal(err)
 	}
-	defer Close()
+	defer cache.Close()
 
 	m := map[string]string{
 		"key": "hello",
 	}
 
-	err := Store(strings.Join([]string{TEST_PREFIX, "get-test"}, ":"), m, time.Minute)
+	err := cache.Store(strings.Join([]string{TEST_PREFIX, "get-test"}, ":"), m, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	val, err := Get[map[string]string](strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
+	val, err := cache.Get[map[string]string](strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if (*val)["key"] != "hello" {
 		t.Fatalf("Get[\"key\"] should be \"hello\"")
 	}
-	_, err = Del(strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
+	_, err = cache.Del(strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	val, err = Get[map[string]string](strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
-	if err != ErrNotFound {
+	val, err = cache.Get[map[string]string](strings.Join([]string{TEST_PREFIX, "get-test"}, ":"))
+	if err != cache.ErrNotFound {
 		t.Fatalf("Get[\"key\"] should be ErrNotFound")
 	}
 }

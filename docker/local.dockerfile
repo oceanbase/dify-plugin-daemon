@@ -1,4 +1,6 @@
+# Use public image for GitHub Actions compatibility
 FROM golang:1.23-alpine AS builder
+# FROM reg.docker.alibaba-inc.com/dockerhub_common/golang:1.23-alpine AS builder
 
 ARG VERSION=unknown
 
@@ -9,7 +11,7 @@ COPY . /app
 WORKDIR /app
 
 # using goproxy if you have network issues
-# ENV GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=https://goproxy.cn,direct
 
 # build
 RUN go build \
@@ -22,15 +24,24 @@ RUN go build \
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-FROM ubuntu:24.04
+# Use public image for GitHub Actions compatibility
+FROM ubuntu:22.04
+# FROM reg.docker.alibaba-inc.com/ant-base/ubuntu:22.04
+USER root
+SHELL ["/bin/bash", "-c"]
 
 WORKDIR /app
 
 # check build args
 ARG PLATFORM=local
+ARG NEED_MIRROR=1
 
 # Install python3.12 if PLATFORM is local
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl python3.12 python3.12-venv python3.12-dev python3-pip ffmpeg build-essential \
+RUN apt-get upgrade && apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl python3.12 python3.12-venv python3.12-dev python3-pip ffmpeg build-essential git unzip libssl-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1;
@@ -39,11 +50,23 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl pyt
 ENV TIKTOKEN_CACHE_DIR=/app/.tiktoken
 
 # Install dify_plugin to speedup the environment setup, test uv and preload tiktoken
-RUN mv /usr/lib/python3.12/EXTERNALLY-MANAGED /usr/lib/python3.12/EXTERNALLY-MANAGED.bk \
-    && python3 -m pip install uv \
+RUN [ -f /usr/lib/python3.12/EXTERNALLY-MANAGED ] && mv /usr/lib/python3.12/EXTERNALLY-MANAGED /usr/lib/python3.12/EXTERNALLY-MANAGED.bk || true \
+    && python3.12 -m ensurepip --upgrade \
+    && (if [ "$NEED_MIRROR" = "1" ]; then \
+        echo "Setting up Aliyun pip mirrors..." && \
+        python3.12 -m pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
+        python3.12 -m pip config set global.trusted-host mirrors.aliyun.com && \
+        mkdir -p /etc/uv && \
+        echo "[[index]]" > /etc/uv/uv.toml && \
+        echo 'url = "https://mirrors.aliyun.com/pypi/simple"' >> /etc/uv/uv.toml && \
+        echo "default = true" >> /etc/uv/uv.toml && \
+        echo "Mirrors setup completed"; \
+    fi) \
+    && python3.12 -m pip install --upgrade pip setuptools wheel \
+    && python3.12 -m pip install uv \
     && uv pip install --system dify_plugin \
-    && python3 -c "from uv._find_uv import find_uv_bin;print(find_uv_bin());" \
-    && python3 -c "import tiktoken; encodings = ['o200k_base', 'cl100k_base', 'p50k_base', 'r50k_base', 'p50k_edit', 'gpt2']; [tiktoken.get_encoding(encoding).special_tokens_set for encoding in encodings]"
+    && python3.12 -c "from uv._find_uv import find_uv_bin;print(find_uv_bin());" \
+    && python3.12 -c "import tiktoken; encodings = ['o200k_base', 'cl100k_base', 'p50k_base', 'r50k_base', 'p50k_edit', 'gpt2']; [tiktoken.get_encoding(encoding).special_tokens_set for encoding in encodings]"
 
 ENV UV_PATH=/usr/local/bin/uv
 ENV PLATFORM=$PLATFORM
