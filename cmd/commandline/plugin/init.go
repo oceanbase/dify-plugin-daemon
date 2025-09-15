@@ -16,8 +16,58 @@ import (
 	"github.com/langgenius/dify-plugin-daemon/pkg/entities/plugin_entities"
 )
 
-//go:embed templates/python/icon.svg
-var icon []byte
+var (
+	//go:embed templates/icons/agent_light.svg
+	agentLight []byte
+	//go:embed templates/icons/agent_dark.svg
+	agentDark []byte
+	//go:embed templates/icons/datasource_light.svg
+	datasourceLight []byte
+	//go:embed templates/icons/datasource_dark.svg
+	datasourceDark []byte
+	//go:embed templates/icons/extension_light.svg
+	extensionLight []byte
+	//go:embed templates/icons/extension_dark.svg
+	extensionDark []byte
+	//go:embed templates/icons/model_light.svg
+	modelLight []byte
+	//go:embed templates/icons/model_dark.svg
+	modelDark []byte
+	//go:embed templates/icons/tool_light.svg
+	toolLight []byte
+	//go:embed templates/icons/tool_dark.svg
+	toolDark []byte
+	//go:embed templates/icons/trigger_light.svg
+	triggerLight []byte
+	//go:embed templates/icons/trigger_dark.svg
+	triggerDark []byte
+
+	//go:embed templates/readme/zh_Hans.md
+	zhHansReadme []byte
+	//go:embed templates/readme/ja_JP.md
+	jaJpReadme []byte
+	//go:embed templates/readme/pt_BR.md
+	ptBrReadme []byte
+)
+
+var icon = map[string]map[string][]byte{
+	"light": {
+		"agent-strategy": agentLight,
+		"datasource":     datasourceLight,
+		"extension":      extensionLight,
+		"model":          modelLight,
+		"tool":           toolLight,
+		"trigger":        triggerLight,
+	},
+	"dark": {
+		"agent-strategy": agentDark,
+		"datasource":     datasourceDark,
+		"extension":      extensionDark,
+		"model":          modelDark,
+		"tool":           toolDark,
+		"trigger":        triggerDark,
+	},
+}
 
 func InitPlugin() {
 	m := initialize()
@@ -152,14 +202,22 @@ func InitPluginWithFlags(
 
 	// Update permissions
 	perm := m.subMenus[SUB_MENU_KEY_PERMISSION].(permission)
-	perm.UpdatePermission(plugin_entities.PluginPermissionRequirement{
-		Endpoint: &plugin_entities.PluginPermissionEndpointRequirement{
+	permissionRequirement := &plugin_entities.PluginPermissionRequirement{}
+
+	if allowRegisterEndpoint {
+		permissionRequirement.Endpoint = &plugin_entities.PluginPermissionEndpointRequirement{
 			Enabled: allowRegisterEndpoint,
-		},
-		Tool: &plugin_entities.PluginPermissionToolRequirement{
+		}
+	}
+
+	if allowInvokeTool {
+		permissionRequirement.Tool = &plugin_entities.PluginPermissionToolRequirement{
 			Enabled: allowInvokeTool,
-		},
-		Model: &plugin_entities.PluginPermissionModelRequirement{
+		}
+	}
+
+	if allowInvokeModel {
+		permissionRequirement.Model = &plugin_entities.PluginPermissionModelRequirement{
 			Enabled:       allowInvokeModel,
 			LLM:           allowInvokeLLM,
 			TextEmbedding: allowInvokeTextEmbedding,
@@ -167,18 +225,29 @@ func InitPluginWithFlags(
 			TTS:           allowInvokeTTS,
 			Speech2text:   allowInvokeSpeech2Text,
 			Moderation:    allowInvokeModeration,
-		},
-		Node: &plugin_entities.PluginPermissionNodeRequirement{
+		}
+	}
+
+	if allowInvokeNode {
+		permissionRequirement.Node = &plugin_entities.PluginPermissionNodeRequirement{
 			Enabled: allowInvokeNode,
-		},
-		App: &plugin_entities.PluginPermissionAppRequirement{
+		}
+	}
+
+	if allowInvokeApp {
+		permissionRequirement.App = &plugin_entities.PluginPermissionAppRequirement{
 			Enabled: allowInvokeApp,
-		},
-		Storage: &plugin_entities.PluginPermissionStorageRequirement{
+		}
+	}
+
+	if allowUseStorage {
+		permissionRequirement.Storage = &plugin_entities.PluginPermissionStorageRequirement{
 			Enabled: allowUseStorage,
 			Size:    storageSize,
-		},
-	})
+		}
+	}
+
+	perm.UpdatePermission(*permissionRequirement)
 	m.subMenus[SUB_MENU_KEY_PERMISSION] = perm
 
 	// If quick mode is enabled, skip interactive mode
@@ -333,6 +402,7 @@ func (m model) createPlugin() {
 			Version:     manifest_entities.Version("0.0.1"),
 			Type:        manifest_entities.PluginType,
 			Icon:        "icon.svg",
+			IconDark:    "icon-dark.svg",
 			Author:      m.subMenus[SUB_MENU_KEY_PROFILE].(profile).Author(),
 			Name:        m.subMenus[SUB_MENU_KEY_PROFILE].(profile).Name(),
 			Description: plugin_entities.NewI18nObject(m.subMenus[SUB_MENU_KEY_PROFILE].(profile).Description()),
@@ -420,9 +490,27 @@ func (m model) createPlugin() {
 		return
 	}
 
+	// get icon and icon-dark
+	iconLight := icon["light"][string(manifest.Category())]
+	if iconLight == nil {
+		log.Error("icon not found for category: %s", manifest.Category())
+		return
+	}
+	iconDark := icon["dark"][string(manifest.Category())]
+	if iconDark == nil {
+		log.Error("icon-dark not found for category: %s", manifest.Category())
+		return
+	}
+
 	// create icon.svg
-	if err := writeFile(filepath.Join(pluginDir, "_assets", "icon.svg"), string(icon)); err != nil {
+	if err := writeFile(filepath.Join(pluginDir, "_assets", "icon.svg"), string(iconLight)); err != nil {
 		log.Error("failed to write icon file: %s", err)
+		return
+	}
+
+	// create icon-dark.svg
+	if err := writeFile(filepath.Join(pluginDir, "_assets", "icon-dark.svg"), string(iconDark)); err != nil {
+		log.Error("failed to write icon-dark file: %s", err)
 		return
 	}
 
@@ -435,6 +523,42 @@ func (m model) createPlugin() {
 	if err := writeFile(filepath.Join(pluginDir, "README.md"), readme); err != nil {
 		log.Error("failed to write README file: %s", err)
 		return
+	}
+
+	// create multilingual README files if enabled
+	profileMenu := m.subMenus[SUB_MENU_KEY_PROFILE].(profile)
+	if profileMenu.EnableI18nReadme() {
+		selectedLanguages := profileMenu.SelectedLanguages()
+
+		// Define language template mapping
+		languageTemplates := map[string][]byte{
+			"zh_Hans": zhHansReadme,
+			"ja_JP":   jaJpReadme,
+			"pt_BR":   ptBrReadme,
+		}
+
+		for _, lang := range selectedLanguages {
+			if lang == "en" {
+				// English README is already created as README.md
+				continue
+			}
+
+			if template, exists := languageTemplates[lang]; exists {
+				// Render the template for this language
+				langReadme, err := renderTemplate(template, manifest, []string{})
+				if err != nil {
+					log.Error("failed to render %s README template: %s", lang, err)
+					return
+				}
+
+				// Write the language-specific README file
+				readmeFilename := fmt.Sprintf("README_%s.md", lang)
+				if err := writeFile(filepath.Join(pluginDir, "readme", readmeFilename), langReadme); err != nil {
+					log.Error("failed to write %s README file: %s", lang, err)
+					return
+				}
+			}
+		}
 	}
 
 	// create .env.example
