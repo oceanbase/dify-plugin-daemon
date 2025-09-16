@@ -30,18 +30,18 @@ func init() {
 		DBSslMode:  "disable",
 	}
 	var err error
-	db.DifyPluginDB, err = mysql.InitPluginDB(
-		config.DBHost,
-		int(config.DBPort),
-		config.DBDatabase,
-		config.DBDefaultDatabase,
-		config.DBUsername,
-		config.DBPassword,
-		config.DBSslMode,
-		config.DBMaxIdleConns,
-		config.DBMaxOpenConns,
-		config.DBConnMaxLifetime,
-	)
+	db.DifyPluginDB, err = mysql.InitPluginDB(&mysql.MySQLConfig{
+		Host:               config.DBHost,
+		Port:               int(config.DBPort),
+		DBName:             config.DBDatabase,
+		DefaultDBName:      config.DBDefaultDatabase,
+		User:               config.DBUsername,
+		Pass:               config.DBPassword,
+		SSLMode:            config.DBSslMode,
+		MaxIdleConns:       config.DBMaxIdleConns,
+		MaxOpenConns:       config.DBMaxOpenConns,
+		ConnMaxLifetime:    config.DBConnMaxLifetime,
+	})
 	if err != nil {
 		log.Panicf("failed init plugin db: %v", err)
 	}

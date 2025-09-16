@@ -67,7 +67,7 @@ func (c Client) Set(key string, value any, expire time.Duration) error {
 	val := toBytes(value)
 	expireTime := time.Now().Add(expire)
 
-	// 使用 INSERT ... ON DUPLICATE KEY UPDATE 来避免并发写入问题
+	// Use INSERT ... ON DUPLICATE KEY UPDATE to avoid concurrent write issues
 	sql := `INSERT INTO cache_kvs (cache_key, cache_value, expire_time, created_at, updated_at) 
 			VALUES (?, ?, ?, NOW(), NOW()) 
 			ON DUPLICATE KEY UPDATE 
@@ -117,7 +117,7 @@ func (c Client) Count(key ...string) (int64, error) {
 }
 
 func (c Client) SetMapField(key string, field string, value string) error {
-	// 使用 INSERT ... ON DUPLICATE KEY UPDATE 来避免并发写入问题
+	// Use INSERT ... ON DUPLICATE KEY UPDATE to avoid concurrent write issues
 	sql := `INSERT INTO cache_maps (cache_key, cache_field, cache_value, created_at, updated_at) 
 			VALUES (?, ?, ?, NOW(), NOW()) 
 			ON DUPLICATE KEY UPDATE 
@@ -197,7 +197,7 @@ func (c Client) SetNX(key string, value any, expire time.Duration) (bool, error)
 	val := toBytes(value)
 	expireTime := time.Now().Add(expire)
 
-	// 使用 INSERT IGNORE 来实现 SetNX，避免并发写入问题
+	// Use INSERT IGNORE to implement SetNX, avoiding concurrent write issues
 	sql := `INSERT IGNORE INTO cache_kvs (cache_key, cache_value, expire_time, created_at, updated_at) 
 			VALUES (?, ?, ?, NOW(), NOW())`
 
@@ -206,7 +206,7 @@ func (c Client) SetNX(key string, value any, expire time.Duration) (bool, error)
 		return false, result.Error
 	}
 
-	// 如果影响的行数为1，说明插入成功；如果为0，说明记录已存在
+	// If affected rows is 1, insertion succeeded; if 0, record already exists
 	return result.RowsAffected == 1, nil
 }
 
@@ -297,4 +297,182 @@ func (c Client) Subscribe(channel string) (<-chan string, func()) {
 	return ch, func() {
 		close(stop)
 	}
+}
+
+// Increase increases the key value by 1
+func (c Client) Increase(key string) (int64, error) {
+	// MySQL implementation: first try to get current value, then increment
+	var cacheKV CacheKV
+	result := c.DB.Where("cache_key = ? AND expire_time > ?", key, time.Now()).First(&cacheKV)
+	if result.Error != nil {
+		if result.Error.Error() == "record not found" {
+			// If not exists, create new record with value 1
+			expireTime := time.Now().Add(time.Hour * 24) // Default 24 hours expiration
+			sql := `INSERT INTO cache_kvs (cache_key, cache_value, expire_time, created_at, updated_at) 
+					VALUES (?, ?, ?, NOW(), NOW()) 
+					ON DUPLICATE KEY UPDATE 
+					cache_value = CAST(cache_value AS UNSIGNED) + 1, 
+					updated_at = NOW()`
+			err := c.DB.Exec(sql, key, []byte("1"), expireTime).Error
+			if err != nil {
+				return 0, err
+			}
+			return 1, nil
+		}
+		return 0, result.Error
+	}
+
+	// Increment existing value
+	sql := `UPDATE cache_kvs 
+			SET cache_value = CAST(cache_value AS UNSIGNED) + 1, 
+				updated_at = NOW() 
+			WHERE cache_key = ? AND expire_time > ?`
+	result = c.DB.Exec(sql, key, time.Now())
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	// Get new value
+	var newValue int64
+	err := c.DB.Model(&CacheKV{}).
+		Select("CAST(cache_value AS UNSIGNED)").
+		Where("cache_key = ? AND expire_time > ?", key, time.Now()).
+		Scan(&newValue).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return newValue, nil
+}
+
+// Decrease decreases the key value by 1
+func (c Client) Decrease(key string) (int64, error) {
+	// MySQL implementation: first try to get current value, then decrement
+	var cacheKV CacheKV
+	result := c.DB.Where("cache_key = ? AND expire_time > ?", key, time.Now()).First(&cacheKV)
+	if result.Error != nil {
+		if result.Error.Error() == "record not found" {
+			return 0, cache.ErrNotFound
+		}
+		return 0, result.Error
+	}
+
+	// Decrement existing value
+	sql := `UPDATE cache_kvs 
+			SET cache_value = CAST(cache_value AS UNSIGNED) - 1, 
+				updated_at = NOW() 
+			WHERE cache_key = ? AND expire_time > ?`
+	result = c.DB.Exec(sql, key, time.Now())
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	// Get new value
+	var newValue int64
+	err := c.DB.Model(&CacheKV{}).
+		Select("CAST(cache_value AS UNSIGNED)").
+		Where("cache_key = ? AND expire_time > ?", key, time.Now()).
+		Scan(&newValue).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return newValue, nil
+}
+
+// SetExpire sets the expire time for the key
+func (c Client) SetExpire(key string, expire time.Duration) error {
+	expireTime := time.Now().Add(expire)
+	result := c.DB.Model(&CacheKV{}).
+		Where("cache_key = ?", key).
+		Update("expire_time", expireTime)
+	return result.Error
+}
+
+// ScanKeys scans keys with match pattern
+func (c Client) ScanKeys(match string) ([]string, error) {
+	var cacheKVs []CacheKV
+	query := c.DB.Model(&CacheKV{}).Where("expire_time > ?", time.Now())
+
+	if match != "" {
+		sqlPattern := convertRegexToSQL(match)
+		query = query.Where("cache_key LIKE ?", sqlPattern)
+	}
+
+	result := query.Find(&cacheKVs)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	var keys []string
+	for _, cacheKV := range cacheKVs {
+		keys = append(keys, cacheKV.CacheKey)
+	}
+
+	return keys, nil
+}
+
+// ScanKeysAsync scans keys with match pattern asynchronously
+func (c Client) ScanKeysAsync(match string, fn func([]string) error) error {
+	keys, err := c.ScanKeys(match)
+	if err != nil {
+		return err
+	}
+	return fn(keys)
+}
+
+// SetMapFields sets multiple map fields at once
+func (c Client) SetMapFields(key string, v map[string]any) error {
+	// MySQL implementation: batch insert or update
+	for field, value := range v {
+		valueStr := fmt.Sprintf("%v", value)
+		err := c.SetMapField(key, field, valueStr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Lock implements distributed locking
+func (c Client) Lock(key string, expire time.Duration, tryLockTimeout time.Duration) error {
+	lockKey := fmt.Sprintf("lock:%s", key)
+	
+	// Try to acquire lock
+	success, err := c.SetNX(lockKey, "1", expire)
+	if err != nil {
+		return err
+	}
+	
+	if success {
+		return nil
+	}
+	
+	// If acquisition fails, wait and retry
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		success, err := c.SetNX(lockKey, "1", expire)
+		if err != nil {
+			return err
+		}
+		if success {
+			return nil
+		}
+		
+		tryLockTimeout -= 20 * time.Millisecond
+		if tryLockTimeout <= 0 {
+			return cache.ErrNotFound // Use existing error type
+		}
+	}
+	
+	return nil
+}
+
+// Unlock releases the distributed lock
+func (c Client) Unlock(key string) error {
+	lockKey := fmt.Sprintf("lock:%s", key)
+	_, err := c.Delete(lockKey)
+	return err
 }

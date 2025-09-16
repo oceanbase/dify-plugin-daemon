@@ -130,7 +130,7 @@ func (p *PluginManager) Launch(configuration *app.Config) {
 	if configuration.RedisUseSentinel {
 		// use Redis Sentinel
 		sentinels := strings.Split(configuration.RedisSentinels, ",")
-		if err := cache.InitRedisSentinelClient(
+		if err := redis.InitRedisSentinelClient(
 			sentinels,
 			configuration.RedisSentinelServiceName,
 			configuration.RedisUser,
@@ -144,7 +144,7 @@ func (p *PluginManager) Launch(configuration *app.Config) {
 			log.Panic("init redis sentinel client failed: %s", err.Error())
 		}
 	} else {
-		if err := cache.InitRedisClient(
+		if err := redis.InitRedisClient(
 			fmt.Sprintf("%s:%d", configuration.RedisHost, configuration.RedisPort),
 			configuration.RedisUser,
 			configuration.RedisPass,

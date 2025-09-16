@@ -321,7 +321,7 @@ func TestLock(t *testing.T) {
 	if err := InitRedisClient("127.0.0.1:6379", "", "difyai123456", false, 0); err != nil {
 		t.Fatal(err)
 	}
-	defer Close()
+	defer cache.Close()
 
 	const CONCURRENCY = 10
 	const SINGLE_TURN_TIME = 100
@@ -332,11 +332,11 @@ func TestLock(t *testing.T) {
 	waitMilliseconds := int32(0)
 
 	foo := func() {
-		Lock("test-lock", SINGLE_TURN_TIME*time.Millisecond*1000, SINGLE_TURN_TIME*time.Millisecond*1000)
+		cache.Lock("test-lock", SINGLE_TURN_TIME*time.Millisecond*1000, SINGLE_TURN_TIME*time.Millisecond*1000)
 		started := time.Now()
 		time.Sleep(SINGLE_TURN_TIME * time.Millisecond)
 		defer func() {
-			Unlock("test-lock")
+			cache.Unlock("test-lock")
 			atomic.AddInt32(&waitMilliseconds, int32(time.Since(started).Milliseconds()))
 			wg.Done()
 		}()
