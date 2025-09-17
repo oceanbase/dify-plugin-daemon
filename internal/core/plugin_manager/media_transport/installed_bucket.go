@@ -5,7 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/langgenius/dify-plugin-daemon/internal/oss"
+	"github.com/langgenius/dify-cloud-kit/oss"
+
 	"github.com/langgenius/dify-plugin-daemon/internal/utils/log"
 	"github.com/langgenius/dify-plugin-daemon/pkg/entities/plugin_entities"
 )
@@ -77,7 +78,8 @@ func (b *InstalledBucket) List() ([]plugin_entities.PluginUniqueIdentifier, erro
 			strings.TrimPrefix(path.Path, b.installedPath),
 		)
 		if err != nil {
-			return nil, err
+			log.Error("failed to create PluginUniqueIdentifier from path %s: %v", path.Path, err)
+			continue
 		}
 		identifiers = append(identifiers, identifier)
 	}

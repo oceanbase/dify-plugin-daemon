@@ -29,6 +29,15 @@ type Client interface {
 	Transaction(fn func(context Context) error) error
 	Publish(channel string, message string) error
 	Subscribe(channel string) (<-chan string, func())
+	// Additional methods from the original redis.go
+	Increase(key string) (int64, error)
+	Decrease(key string) (int64, error)
+	SetExpire(key string, time time.Duration) error
+	ScanKeys(match string) ([]string, error)
+	ScanKeysAsync(match string, fn func([]string) error) error
+	SetMapFields(key string, v map[string]any) error
+	Lock(key string, expire time.Duration, tryLockTimeout time.Duration) error
+	Unlock(key string) error
 }
 
 var (
@@ -276,44 +285,6 @@ func SetNX[T any](key string, value T, expire time.Duration, context ...Context)
 	return getCmdable(context...).SetNX(serialKey(key), bytes, expire)
 }
 
-var (
-	ErrLockTimeout = errors.New("lock timeout")
-)
-
-// Lock key, expire time takes responsibility for expiration time
-// try_lock_timeout takes responsibility for the timeout of trying to lock
-func Lock(key string, expire time.Duration, tryLockTimeout time.Duration, context ...Context) error {
-	if client == nil {
-		return ErrNotInit
-	}
-
-	const LOCK_DURATION = 20 * time.Millisecond
-
-	ticker := time.NewTicker(LOCK_DURATION)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if _, err := getCmdable(context...).SetNX(serialKey(key), "1", expire); err == nil {
-			return nil
-		}
-
-		tryLockTimeout -= LOCK_DURATION
-		if tryLockTimeout <= 0 {
-			return ErrLockTimeout
-		}
-	}
-
-	return nil
-}
-
-func Unlock(key string, context ...Context) error {
-	if client == nil {
-		return ErrNotInit
-	}
-
-	_, err := getCmdable(context...).Delete(serialKey(key))
-	return err
-}
 
 func Expire(key string, time time.Duration, context ...Context) (bool, error) {
 	if client == nil {
@@ -359,4 +330,89 @@ func Subscribe[T any](channel string) (<-chan T, func()) {
 	}()
 
 	return ch, fn
+}
+
+// Increase increases the key value by 1
+func Increase(key string, context ...Context) (int64, error) {
+	if client == nil {
+		return 0, ErrNotInit
+	}
+
+	return getCmdable(context...).Increase(serialKey(key))
+}
+
+// Decrease decreases the key value by 1
+func Decrease(key string, context ...Context) (int64, error) {
+	if client == nil {
+		return 0, ErrNotInit
+	}
+
+	return getCmdable(context...).Decrease(serialKey(key))
+}
+
+// SetExpire sets the expire time for the key
+func SetExpire(key string, time time.Duration, context ...Context) error {
+	if client == nil {
+		return ErrNotInit
+	}
+
+	return getCmdable(context...).SetExpire(serialKey(key), time)
+}
+
+// ScanKeys scans keys with match pattern
+func ScanKeys(match string, context ...Context) ([]string, error) {
+	if client == nil {
+		return nil, ErrNotInit
+	}
+
+	result := make([]string, 0)
+
+	if err := ScanKeysAsync(match, func(keys []string) error {
+		result = append(result, keys...)
+		return nil
+	}, context...); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ScanKeysAsync scans keys with match pattern asynchronously
+func ScanKeysAsync(match string, fn func([]string) error, context ...Context) error {
+	if client == nil {
+		return ErrNotInit
+	}
+
+	return getCmdable(context...).ScanKeysAsync(serialKey(match), fn)
+}
+
+// SetMapFields sets multiple map fields at once
+func SetMapFields(key string, v map[string]any, context ...Context) error {
+	if client == nil {
+		return ErrNotInit
+	}
+
+	return getCmdable(context...).SetMapFields(serialKey(key), v)
+}
+
+var (
+	ErrLockTimeout = errors.New("lock timeout")
+)
+
+// Lock implements distributed locking
+func Lock(key string, expire time.Duration, tryLockTimeout time.Duration, context ...Context) error {
+	if client == nil {
+		return ErrNotInit
+	}
+
+	return getCmdable(context...).Lock(serialKey(key), expire, tryLockTimeout)
+}
+
+// Unlock releases the distributed lock
+func Unlock(key string, context ...Context) error {
+	if client == nil {
+		return ErrNotInit
+	}
+
+	return getCmdable(context...).Unlock(serialKey(key))
 }

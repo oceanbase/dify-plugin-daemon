@@ -37,28 +37,6 @@ var (
 		Long: `Initialize a new plugin with the given parameters.
 If no parameters are provided, an interactive mode will be started.`,
 		Run: func(c *cobra.Command, args []string) {
-			author, _ := c.Flags().GetString("author")
-			name, _ := c.Flags().GetString("name")
-			repo, _ := c.Flags().GetString("repo")
-			description, _ := c.Flags().GetString("description")
-			allowRegisterEndpoint, _ := c.Flags().GetBool("allow-register-endpoint")
-			allowInvokeTool, _ := c.Flags().GetBool("allow-invoke-tool")
-			allowInvokeModel, _ := c.Flags().GetBool("allow-invoke-model")
-			allowInvokeLLM, _ := c.Flags().GetBool("allow-invoke-llm")
-			allowInvokeTextEmbedding, _ := c.Flags().GetBool("allow-invoke-text-embedding")
-			allowInvokeRerank, _ := c.Flags().GetBool("allow-invoke-rerank")
-			allowInvokeTTS, _ := c.Flags().GetBool("allow-invoke-tts")
-			allowInvokeSpeech2Text, _ := c.Flags().GetBool("allow-invoke-speech2text")
-			allowInvokeModeration, _ := c.Flags().GetBool("allow-invoke-moderation")
-			allowInvokeNode, _ := c.Flags().GetBool("allow-invoke-node")
-			allowInvokeApp, _ := c.Flags().GetBool("allow-invoke-app")
-			allowUseStorage, _ := c.Flags().GetBool("allow-use-storage")
-			storageSize, _ := c.Flags().GetUint64("storage-size")
-			category, _ := c.Flags().GetString("category")
-			language, _ := c.Flags().GetString("language")
-			minDifyVersion, _ := c.Flags().GetString("min-dify-version")
-			quick, _ := c.Flags().GetBool("quick")
-
 			plugin.InitPluginWithFlags(
 				author,
 				name,
@@ -177,6 +155,23 @@ If no parameters are provided, an interactive mode will be started.`,
 		},
 	}
 
+	pluginReadmeCommand = &cobra.Command{
+		Use:   "readme",
+		Short: "Readme",
+		Long:  "Readme",
+	}
+
+	pluginReadmeListCommand = &cobra.Command{
+		Use:   "list [plugin_path]",
+		Short: "List available README languages",
+		Long:  "List available README languages in the specified plugin",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			pluginPath := args[0]
+			plugin.ListReadme(pluginPath)
+		},
+	}
+
 	// NOTE: tester is deprecated, maybe, in several months, we will support this again
 	// pluginTestCommand = &cobra.Command{
 	// 	Use:   "test [-i inputs] [-t timeout] package_path invoke_type invoke_action",
@@ -229,10 +224,12 @@ func init() {
 	pluginCommand.AddCommand(pluginChecksumCommand)
 	pluginCommand.AddCommand(pluginEditPermissionCommand)
 	pluginCommand.AddCommand(pluginModuleCommand)
+	pluginCommand.AddCommand(pluginReadmeCommand)
 	pluginModuleCommand.AddCommand(pluginModuleListCommand)
 	pluginModuleCommand.AddCommand(pluginModuleAppendCommand)
 	pluginModuleAppendCommand.AddCommand(pluginModuleAppendToolsCommand)
 	pluginModuleAppendCommand.AddCommand(pluginModuleAppendEndpointsCommand)
+	pluginReadmeCommand.AddCommand(pluginReadmeListCommand)
 
 	pluginInitCommand.Flags().StringVar(&author, "author", "", "Author name (1-64 characters, lowercase letters, numbers, dashes and underscores only)")
 	pluginInitCommand.Flags().StringVar(&name, "name", "", "Plugin name (1-128 characters, lowercase letters, numbers, dashes and underscores only)")
